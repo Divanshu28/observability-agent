@@ -9,15 +9,26 @@ const WELCOME = {
   content: `Hi! I'm your DataDog observability assistant.\n\nYou can ask me things like:\n- "Show me error rate for the payments service in the last hour"\n- "Are there any active monitors firing right now?"\n- "What does CPU look like on the api-gateway hosts?"\n- "Summarise any incidents from the last 24 hours"`
 }
 
+const STORAGE_KEY = 'obs_agent_session_id'
+
 export default function App() {
   const [messages, setMessages] = useState([WELCOME])
   const [sessionId, setSessionId] = useState(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    createSession()
-      .then(id => setSessionId(id))
-      .catch(() => console.error('Could not create session'))
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) {
+      // Reuse existing session — backend will auto-create a new one if it expired
+      setSessionId(saved)
+    } else {
+      createSession()
+        .then(id => {
+          localStorage.setItem(STORAGE_KEY, id)
+          setSessionId(id)
+        })
+        .catch(() => console.error('Could not create session'))
+    }
   }, [])
 
   const handleSend = async (text) => {
@@ -28,7 +39,9 @@ export default function App() {
 
     try {
       const data = await sendMessage(sessionId, text)
+      // Backend may issue a new session_id if the old one expired mid-conversation
       setSessionId(data.session_id)
+      localStorage.setItem(STORAGE_KEY, data.session_id)
       setMessages(prev => [...prev, { role: 'assistant', content: data.response }])
     } catch (err) {
       setMessages(prev => [...prev, {
@@ -43,6 +56,7 @@ export default function App() {
 
   const handleClear = async () => {
     const id = await createSession()
+    localStorage.setItem(STORAGE_KEY, id)
     setSessionId(id)
     setMessages([WELCOME])
   }
